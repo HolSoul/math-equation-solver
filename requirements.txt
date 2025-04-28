@@ -1,3 +1,13 @@
+numpy
+opencv-python
+sympy
+torch
+torchvision
+torchaudio
+
+# Для ноутбуков и визуализации
+jupyterlab
+matplotlib
 
 
 
