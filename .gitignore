@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 notebooks/archive/
-requirements.txt
+notebooks/sample_images/
 # C extensions
 *.so
 
