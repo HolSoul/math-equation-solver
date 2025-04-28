@@ -9,5 +9,5 @@ torchaudio
 jupyterlab
 matplotlib
 
-
+tqdm
 
