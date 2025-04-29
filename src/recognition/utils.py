@@ -108,11 +108,13 @@ def collate_fn(batch, pad_idx):
     """Обрабатывает батч данных из Dataset.
 
     Принимает список кортежей (изображение, нумеризованная_формула).
-    Дополняет формулы паддингом до максимальной длины в батче, используя pad_idx.
+    1. Фильтрует некорректные данные.
+    2. Дополняет изображения паддингом до максимальной ширины в батче.
+    3. Дополняет формулы паддингом до максимальной длины в батче, используя pad_idx.
 
     Args:
         batch (list): Список кортежей вида (image_tensor, numericalized_formula_list).
-        pad_idx (int): Индекс токена для паддинга.
+        pad_idx (int): Индекс токена для паддинга формул.
 
     Returns:
         Кортеж: (images_batch, padded_formulas_batch, lengths_batch)
@@ -122,37 +124,53 @@ def collate_fn(batch, pad_idx):
     batch = [item for item in batch if item is not None and item[0] is not None and item[1] is not None]
     if not batch:
         return None # Возвращаем None, если батч пуст после фильтрации
-        
+
     # Разделяем изображения и формулы
     try:
-        images = [item[0] for item in batch]
-        # Убедимся, что все формулы - это списки перед преобразованием в тензор
+        images_list = [item[0] for item in batch]
         formulas_list = [item[1] for item in batch]
         formulas = [torch.tensor(f, dtype=torch.long) for f in formulas_list if isinstance(f, list)]
-        
-        # Проверяем, остались ли формулы после проверки типов
-        if not formulas or len(images) != len(formulas):
+
+        if not formulas or len(images_list) != len(formulas):
             print(f"Предупреждение: Несоответствие изображений и формул или некорректные типы формул в батче. Batch size: {len(batch)}")
             return None
-            
+
     except Exception as e:
         print(f"Ошибка при разделении батча: {e}")
         return None
 
-    # Добавляем паддинг к формулам, используя переданный pad_idx
+    # --- Паддинг изображений --- 
+    try:
+        # Находим максимальную ширину в батче
+        # images_list содержит тензоры формы (C, H, W)
+        max_width = max(img.shape[2] for img in images_list)
+        
+        # Добавляем паддинг к каждому изображению справа до max_width
+        # F.pad принимает (left, right, top, bottom) паддинг для последних 2 измерений
+        # Нам нужен паддинг только по ширине (последнее измерение), справа.
+        padded_images = []
+        for img in images_list:
+            padding_needed = max_width - img.shape[2]
+            # Паддинг: (0, padding_needed) для ширины, (0, 0) для высоты
+            padded_img = F.pad(img, (0, padding_needed, 0, 0), mode='constant', value=0) 
+            padded_images.append(padded_img)
+            
+        # Собираем изображения в один тензор
+        images_batch = torch.stack(padded_images, dim=0)
+        
+    except Exception as e:
+        print(f"Ошибка при паддинге или стакинге изображений: {e}")
+        # Дополнительная информация для отладки
+        print("Размеры изображений в батче перед паддингом:")
+        for i, img in enumerate(images_list):
+            print(f"  Image {i}: {img.shape}")
+        return None
+
+    # --- Паддинг формул --- 
     try:
         padded_formulas = pad_sequence(formulas, batch_first=True, padding_value=pad_idx)
     except Exception as e:
         print(f"Ошибка при паддинге последовательностей: {e}")
-        return None
-
-    # Собираем изображения в один тензор
-    try:
-        images_batch = torch.stack(images, dim=0)
-    except Exception as e:
-        print(f"Ошибка при стакинге изображений: {e}. Размеры изображений в батче:")
-        for i, img in enumerate(images):
-            print(f"  Image {i}: {img.shape}")
         return None
 
     # Получаем реальные длины последовательностей (включая SOS и EOS)
@@ -160,6 +178,7 @@ def collate_fn(batch, pad_idx):
     lengths_batch = torch.tensor(lengths, dtype=torch.long)
 
     return images_batch, padded_formulas, lengths_batch
+
 
 # --- Пример использования --- (Можно раскомментировать для проверки)
 # if __name__ == '__main__':
