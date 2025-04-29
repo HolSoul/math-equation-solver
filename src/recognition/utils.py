@@ -2,6 +2,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from collections import Counter
 import re
+import torch.nn.functional as F
 
 # --- Специальные токены ---
 PAD_TOKEN = "<pad>"  # Токен для заполнения (padding)
