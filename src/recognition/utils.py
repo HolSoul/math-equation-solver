@@ -104,30 +104,58 @@ class Vocabulary:
 
 # --- Функция для DataLoader --- (Collate Function)
 
-def collate_fn(batch):
+def collate_fn(batch, pad_idx):
     """Обрабатывает батч данных из Dataset.
 
     Принимает список кортежей (изображение, нумеризованная_формула).
-    Дополняет формулы паддингом до максимальной длины в батче.
+    Дополняет формулы паддингом до максимальной длины в батче, используя pad_idx.
+
+    Args:
+        batch (list): Список кортежей вида (image_tensor, numericalized_formula_list).
+        pad_idx (int): Индекс токена для паддинга.
 
     Returns:
         Кортеж: (images_batch, padded_formulas_batch, lengths_batch)
+                Возвращает None, если батч пустой или содержит некорректные данные.
     """
+    # Фильтруем None значения, которые могли прийти из __getitem__ при ошибке
+    batch = [item for item in batch if item is not None and item[0] is not None and item[1] is not None]
+    if not batch:
+        return None # Возвращаем None, если батч пуст после фильтрации
+        
     # Разделяем изображения и формулы
-    images = [item[0] for item in batch]
-    formulas = [torch.tensor(item[1], dtype=torch.long) for item in batch]
+    try:
+        images = [item[0] for item in batch]
+        # Убедимся, что все формулы - это списки перед преобразованием в тензор
+        formulas_list = [item[1] for item in batch]
+        formulas = [torch.tensor(f, dtype=torch.long) for f in formulas_list if isinstance(f, list)]
+        
+        # Проверяем, остались ли формулы после проверки типов
+        if not formulas or len(images) != len(formulas):
+            print(f"Предупреждение: Несоответствие изображений и формул или некорректные типы формул в батче. Batch size: {len(batch)}")
+            return None
+            
+    except Exception as e:
+        print(f"Ошибка при разделении батча: {e}")
+        return None
 
-    # Добавляем паддинг к формулам
-    # pad_sequence ожидает список тензоров и добавляет паддинг
-    # batch_first=True делает выходной тензор формы (batch_size, seq_len)
-    padded_formulas = pad_sequence(formulas, batch_first=True, padding_value=PAD_IDX)
+    # Добавляем паддинг к формулам, используя переданный pad_idx
+    try:
+        padded_formulas = pad_sequence(formulas, batch_first=True, padding_value=pad_idx)
+    except Exception as e:
+        print(f"Ошибка при паддинге последовательностей: {e}")
+        return None
 
     # Собираем изображения в один тензор
-    # Предполагается, что images - это уже тензоры нужного размера
-    images_batch = torch.stack(images, dim=0)
+    try:
+        images_batch = torch.stack(images, dim=0)
+    except Exception as e:
+        print(f"Ошибка при стакинге изображений: {e}. Размеры изображений в батче:")
+        for i, img in enumerate(images):
+            print(f"  Image {i}: {img.shape}")
+        return None
 
     # Получаем реальные длины последовательностей (включая SOS и EOS)
-    # Они нужны для pack_padded_sequence (если используется) или для маскирования потерь
     lengths = [len(f) for f in formulas]
     lengths_batch = torch.tensor(lengths, dtype=torch.long)
 
@@ -178,7 +206,7 @@ def collate_fn(batch):
 #
 #     batch_example = [(img1, form1), (img2, form2), (img3, form3)]
 #
-#     images_b, formulas_b, lengths_b = collate_fn(batch_example)
+#     images_b, formulas_b, lengths_b = collate_fn(batch_example, PAD_IDX)
 #
 #     print(f"Форма батча изображений: {images_b.shape}")
 #     print(f"Форма батча формул (с паддингом): {formulas_b.shape}")
@@ -187,3 +215,4 @@ def collate_fn(batch):
 #
 #     # Проверяем паддинг
 #     print(f"Индекс PAD токена: {PAD_IDX}")
+ 

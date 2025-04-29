@@ -95,11 +95,15 @@ def train(args):
         vocab.build_vocabulary(train_formulas)
         print(f"Сохранение словаря в {vocab_file_path}")
         with open(vocab_file_path, 'w') as f:
-            json.dump(vocab.word2idx, f)
+            json.dump(vocab.stoi, f, ensure_ascii=False, indent=4)
             
     vocab_size = len(vocab)
     print(f"Размер словаря: {vocab_size}")
-    pad_idx = vocab.stoi['<PAD>'] # Получаем индекс PAD токена
+    pad_token_key = '<pad>'
+    if pad_token_key not in vocab.stoi:
+        print(f"ОШИБКА: Токен '{pad_token_key}' не найден в словаре! Ключи словаря: {list(vocab.stoi.keys())}")
+        raise ValueError(f"Критическая ошибка: Токен '{pad_token_key}' отсутствует в словаре.")
+    pad_idx = vocab.stoi[pad_token_key]
 
     # --- Dataset и DataLoader --- 
     print("Создание Dataset и DataLoader...")
@@ -133,17 +137,16 @@ def train(args):
 
     # --- Модель, функция потерь, оптимизатор --- 
     print("Инициализация модели...")
-    encoder = EncoderCNN(output_dim=args.decoder_dim)
-    # Внимание: input_dim декодера теперь равен args.decoder_dim (выход энкодера)
-    attention = Attention(encoder_dim=args.encoder_dim, decoder_dim=args.decoder_dim)
-    decoder = DecoderRNN(embed_size=args.embed_dim, 
-                         decoder_dim=args.decoder_dim, 
-                         encoder_dim=args.encoder_dim, # Должно совпадать с output_dim энкодера
-                         vocab_size=vocab_size, 
-                         attention=attention, 
-                         dropout=args.dropout)
     
-    model = RecognitionModel(encoder, decoder, device).to(device)
+    # Инициализируем RecognitionModel, передавая гиперпараметры
+    model = RecognitionModel(
+        embed_dim=args.embed_dim,
+        decoder_dim=args.decoder_dim,
+        vocab_size=vocab_size,
+        encoder_output_features=args.encoder_dim, # Размерность выхода энкодера
+        attention_dim=args.attention_dim,         # Размерность attention
+        dropout=args.dropout
+    ).to(device) # Перемещаем на нужное устройство
     
     print(f"Количество обучаемых параметров: {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
 
@@ -245,9 +248,10 @@ if __name__ == '__main__':
 
     # Параметры модели
     parser.add_argument('--img_height', type=int, default=96, help='Высота, к которой приводятся изображения')
-    parser.add_argument('--encoder_dim', type=int, default=512, help='Размерность выхода CNN энкодера (и входа attention)')
+    parser.add_argument('--encoder_dim', type=int, default=512, help='Размерность выхода CNN энкодера (используется как encoder_output_features)')
     parser.add_argument('--embed_dim', type=int, default=256, help='Размерность эмбеддингов токенов')
     parser.add_argument('--decoder_dim', type=int, default=512, help='Размерность скрытого состояния LSTM/GRU декодера')
+    parser.add_argument('--attention_dim', type=int, default=512, help='Размерность внутреннего слоя внимания')
     parser.add_argument('--dropout', type=float, default=0.5, help='Вероятность dropout в декодере')
 
     # Параметры обучения
