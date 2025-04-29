@@ -136,8 +136,3 @@ dmypy.json
 # Cython debug symbols
 cython_debug/ 
 
-#labels
-data/train_labels.txt
-data/val_labels.txt
-data/test_labels.txt
-
